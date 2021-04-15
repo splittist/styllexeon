@@ -230,6 +230,28 @@
         while (next node)
         finally (return (key node))))
 
+(defun read-segments (string &optional (init-val "."))
+  (assert (char= #\| (char string 0)))
+  (assert (char= #\| (char string (1- (length string)))))
+  (loop with node = (make-instance 'leaf :key 0 :value init-val)
+       with head = node
+     with val = init-val
+     with key = 1
+     for index from 1 below (length string)
+     for char = (char string index)
+     while (< key (length string))
+     if (char= #\| char)
+     do
+       (setf (value node) val)
+       (let ((new (make-instance 'leaf :key (1- key) :value init-val :prev node)))
+         (setf (next node) new
+               node new))
+     else do
+       (unless (char= #\Space char)
+         (setf val char)
+         (incf key))
+     finally (return head)))
+
 (defun print-segments (head &key ruler (stream t))
   (serapeum:with-string (s stream)
     (when ruler
@@ -256,6 +278,45 @@
           while node
           do (print node s))))
 
+(defun test-from-file (path)
+  (let ((list nil)
+        (test nil)
+        (total 0)
+        (passed 0)
+        (failed 0))
+    (let ((lines
+           (with-open-file (f path :external-format :utf8)
+             (loop for line = (read-line f nil nil)
+                while line
+                collect line))))
+      (dolist (line lines)
+        (let ((line (string-trim " " line)))
+          (unless (or (string= "" line)
+                      (char= #\# (char line 0)))
+            (multiple-value-bind (first pos)
+                (read-from-string line)
+              (cond ((and (symbolp first) (string-equal "list" first))
+                     (setf list (read-segments (subseq line pos))))
+                    ((and (symbolp first) (string-equal "test" first))
+                     (setf test (read-from-string (subseq line pos))))
+                    ((numberp first)
+                     (with-input-from-string (s line :start pos)
+                       (let ((form (read s))
+                             (other (loop for thing = (read s nil nil)
+                                       while thing
+                                       collecting thing)))
+                         (incf total)
+                         (let ((result (apply test first form other)))
+                           (if (eq t result)
+                               (progn
+                                 (incf passed)
+                                 (princ #\Check_Mark) (princ #\Space))
+                               (progn
+                                 (incf failed)
+                                 (terpri)))))))
+                    (t "Warn: unknown test format '~S'" first))))))
+      (format t "~%Total ~D; Passed ~D; Failed ~D~%" total passed failed))))
+
 (defun compose-b (val)
   (cond ((string= "." val)
          "B")
@@ -266,8 +327,8 @@
         ((string= "C" val)
          "A")))
 
-(defun test-shift (operation expected-string expected-count
-                   &optional (list (make-leaf-list 0 25 5))))
+(defun test-shift (number operation expected-string expected-count
+                   &optional (list (make-leaf-list 0 25 5)))
   (handler-case
       (let ((result t))
         (apply (car operation) list (cdr operation))
@@ -275,115 +336,20 @@
                                           (print-segments list :stream nil)))
               (result-count (segment-count list)))
           (unless (string= expected-string result-string)
-            (format t "Failed: ~A~%~
-                       Wanted: ~A~%~
-                       Got   : ~A~%"
-                    operation expected-string result-string)
+            (format t "~%Failed: ~D ~A~%~
+                         Wanted: ~A~%~
+                         Got   : ~A~%"
+                    number operation expected-string result-string)
             (setf result nil))
           (unless (= expected-count result-count)
-            (format t "Failed: ~A~%~
-                       Wanted: ~D~%~
-                       Got   : ~D~%" operation expected-count result-count)
+            (format t "~%Failed: ~D ~A~%~
+                         Wanted: ~D~%~
+                         Got   : ~D~%"
+                    number operation expected-count result-count)
             (print-nodes list)
             (setf result nil)))
         result)
-    (error (e) (format t "Failed: ~A~%~
-                          ERROR: ~S~%" operation e)
+    (error (e) (format t "~%Failed: ~D ~A~%~
+                            ERROR: ~S~%"
+                       number operation e)
       nil)))
-
-;; 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
-;; |C C C C C|A A A A A|B B B B B|C C C C C|A A A A A|
-
-(defparameter *tests*
-  '((test-shift
-     '(shift-right 0 1)
-     "|C C C C C C|A A A A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(shift-right 3 2)
-     "|C C C C C C C|A A A A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(shift-right 24 1)
-     "|C C C C C|A A A A A|B B B B B|C C C C C|A A A A A A|"
-     6)
-    (test-shift
-     '(shift-right 20 2)
-     "|C C C C C|A A A A A|B B B B B|C C C C C|A A A A A A A|"
-     6)
-    (test-shift
-     '(shift-right 19 2)
-     "|C C C C C|A A A A A|B B B B B|C C C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(shift-left 0 2)
-     "|C C C|A A A A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(shift-left 23 25)
-     "|C C C C C|A A A A A|B B B B B|C C C C C|A A A|"
-     6)
-    (test-shift
-     '(shift-left 0 5)
-     "|A A A A A|B B B B B|C C C C C|A A A A A|"
-     5)
-    (test-shift
-     '(shift-left 20 25)
-     "|C C C C C|A A A A A|B B B B B|C C C C C|"
-     5)
-    (test-shift
-     '(shift-left 3 5)
-     "|C C C|A A A A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(shift-left 3 8)
-     "|C C C|A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(shift-left 3 13)
-     "|C C C|B B|C C C C C|A A A A A|"
-     5)
-    (test-shift
-     '(shift-left 0 25)
-     "||"
-     2)
-    (test-shift
-     '(shift-left 0 23)
-     "|A A|"
-     2)
-    (test-shift
-     '(shift-left 3 17)
-     "|C C C C C C|A A A A A|"
-     3)
-    (test-shift
-     '(insert-segment-list 2 2 "C" string=)
-     "|C C C C C C C|A A A A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(insert-segment-list 2 2 "A" string=)
-     "|C C|A A|C C C|A A A A A|B B B B B|C C C C C|A A A A A|"
-     8)
-    (test-shift
-     '(insert-segment-list 5 2 "A" string=)
-     "|C C C C C|A A A A A A A|B B B B B|C C C C C|A A A A A|"
-     6)
-    (test-shift
-     '(insert-segment-list 8 2 "Z" string=)
-     "|C C C C C|A A A|Z Z|A A|B B B B B|C C C C C|A A A A A|"
-     8)))
-
-(defun run-tests ()
-  (let ((total 0)
-        (passed 0)
-        (failed 0))
-    (dolist (test *tests*)
-      (incf total)
-      (let ((result (eval test)))
-        (if (eq t result)
-            (progn
-              (incf passed)
-              (princ #\Check_Mark) (terpri))
-            (progn (incf failed) (terpri)))))
-    (format t "~%Ran ~D; Passed ~D; Failed ~D"
-            total passed failed)
-    (zerop failed)))
