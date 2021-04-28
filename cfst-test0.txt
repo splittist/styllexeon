@@ -12,18 +12,39 @@ test test-shift
 003 (shift-right 24 1) "|C C C C C|A A A A A|B B B B B|C C C C C|A A A A A A|" 6
 004 (shift-right 20 2) "|C C C C C|A A A A A|B B B B B|C C C C C|A A A A A A A|" 6
 005 (shift-right 19 2) "|C C C C C|A A A A A|B B B B B|C C C C C C C|A A A A A|" 6
+006 (shift-right  5 1) "|C C C C C|A A A A A A|B B B B B|C C C C C|A A A A A|" 6
+007 (shift-right 25 1) "|C C C C C|A A A A A|B B B B B|C C C C C|A A A A A A|" 6
 
-006 (shift-left 0 2)   "|C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 6
-007 (shift-left 23 25) "|C C C C C|A A A A A|B B B B B|C C C C C|A A A|" 6
-008 (shift-left 0 5)   "|A A A A A|B B B B B|C C C C C|A A A A A|" 5
-009 (shift-left 20 25) "|C C C C C|A A A A A|B B B B B|C C C C C|" 5
-010 (shift-left 3 5)   "|C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 6
-011 (shift-left 3 8)   "|C C C|A A|B B B B B|C C C C C|A A A A A|" 6
-012 (shift-left 3 13)  "|C C C|B B|C C C C C|A A A A A|" 5
-013 (shift-left 0 25)  "||" 2
-014 (shift-left 0 23)  "|A A|" 2
-015 (shift-left 3 17)  "|C C C C C C|A A A A A|" 3
-016 (insert-segment-list 2 2 "C" string=) "|C C C C C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 6
-017 (insert-segment-list 2 2 "A" string=) "|C C|A A|C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 8
-018 (insert-segment-list 5 2 "A" string=) "|C C C C C|A A A A A A A|B B B B B|C C C C C|A A A A A|" 6
-019 (insert-segment-list 8 2 "Z" string=) "|C C C C C|A A A|Z Z|A A|B B B B B|C C C C C|A A A A A|" 8
+010 (shift-left 0 2)   "|C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 6
+011 (shift-left 23 25) "|C C C C C|A A A A A|B B B B B|C C C C C|A A A|" 6
+012 (shift-left 0 5)   "|A A A A A|B B B B B|C C C C C|A A A A A|" 5
+013 (shift-left 20 25) "|C C C C C|A A A A A|B B B B B|C C C C C|" 5
+014 (shift-left 3 5)   "|C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 6
+015 (shift-left 3 8)   "|C C C|A A|B B B B B|C C C C C|A A A A A|" 6
+016 (shift-left 3 13)  "|C C C|B B|C C C C C|A A A A A|" 5
+017 (shift-left 0 25)  "||" 2
+018 (shift-left 0 23)  "|A A|" 2
+019 (shift-left 3 17)  "|C C C C C C|A A A A A|" 3
+
+025 (insert-segment-list 2 2 "C" string=) "|C C C C C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 6
+026 (insert-segment-list 2 2 "A" string=) "|C C|A A|C C C|A A A A A|B B B B B|C C C C C|A A A A A|" 8
+027 (insert-segment-list 5 2 "A" string=) "|C C C C C|A A A A A A A|B B B B B|C C C C C|A A A A A|" 6
+028 (insert-segment-list 8 2 "Z" string=) "|C C C C C|A A A|Z Z|A A|B B B B B|C C C C C|A A A A A|" 8
+
+list |. . . . . . . . . . . . . . .|
+030 (compose-list  0 15 compose-b string=) "|B B B B B B B B B B B B B B B|" 2
+031 (compose-list  0  5 compose-b string=) "|B B B B B|. . . . . . . . . .|" 3
+032 (compose-list 10 15 compose-b string=) "|. . . . . . . . . .|B B B B B|" 3
+033 (compose-list  5 10 compose-b string=) "|. . . . .|B B B B B|. . . . .|" 4
+034 (compose-list  5 10 identity  string=) "|. . . . . . . . . . . . . . .|" 2
+
+list |. . . . .|A A A A A|. . . . .|
+040 (compose-list  5 10 compose-b string=) "|. . . . .|C C C C C|. . . . .|" 4
+041 (compose-list  0  5 compose-b string=) "|B B B B B|A A A A A|. . . . .|" 4
+042 (compose-list  3  8 compose-b string=) "|. . .|B B|C C C|A A|. . . . .|" 6
+043 (compose-list  3 12 compose-b string=) "|. . .|B B|C C C C C|B B|. . .|" 6
+
+list |A A A A A|C C C C C|
+050 (compose-list  0  5 compose-b string=) "|C C C C C C C C C C|" 2
+051 (compose-list  5 10 compose-b string=) "|A A A A A A A A A A|" 2
+052 (compose-list  3  8 compose-b string=) "|A A A|C C|A A A|C C|" 5

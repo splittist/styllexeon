@@ -72,10 +72,12 @@
 (defclass leaf (node)
   ((%key
     :initarg :key
-    :accessor key)
+    :accessor key
+    :initform nil)
    (%value
     :initarg :value
-    :accessor value)
+    :accessor value
+    :initform nil)
    (%prev
     :initarg :prev
     :accessor prev
@@ -87,7 +89,11 @@
 
 (defmethod print-object ((object leaf) stream)
   (print-unreadable-object (object stream :type t :identity t)
-    (format stream "~A:~A" (key object) (value object))))
+    (format stream "[~A,~A):~A"
+            (key object)
+            (when (next object)
+              (key (next object)))
+            (value object))))
 
 (defgeneric leafp (node)
   (:method (node) nil)
@@ -105,10 +111,26 @@
   (when right-node
     (setf (prev right-node) left-node)))
 
+(defun copy-leaf (leaf)
+  (make-instance 'leaf :key (key leaf) :value (value leaf)))
+
+(defun copy-leaves (head)
+  (loop with new-head = nil
+        with new = nil
+        for node = head then (next node)
+        and prev = nil then new
+        while node
+        do (setf new (copy-leaf node))
+           (link prev new)
+           (when (null new-head)
+             (setf new-head new))
+        finally (return new-head)))
+
 (defun find-leaf (head key)
   (loop for node = head then (next node)
-          thereis (and (< key (key node))
-                       (prev node))))
+        while (next node)
+        until (< key (key node))
+        finally (return (or (prev node) node))))
 
 (defun shift-right (head pos size &optional (skip t))
   (let ((start (find-leaf head pos)))
@@ -154,15 +176,19 @@
 
 (defun insert-segment-list (head start size val &optional (value= #'eql))
   (let ((node (find-leaf head start)))
-    (if (funcall value= val (value node))
-        (shift-right head start size)
-        (let* ((new (make-instance 'leaf :value val :key start :prev node))
-               (right (make-instance 'leaf :value (value node) :key (+ start size)
-                                           :prev new :next (next node))))
-          (setf (next new) right
-                (prev (next right)) new
-                (next node) new)
-          (shift-right head (key right) size nil)))
+    (labels ((shift-rest-right (from)
+               (loop for node = from then (next node)
+                     while node
+                     do (incf (key node) size))))
+      (if (funcall value= val (value node))
+          (shift-rest-right (next node))
+          (let* ((new (make-instance 'leaf :value val :key start))
+                 (right (make-instance 'leaf :value (value node) :key (+ start size)))
+                 (next (next node)))
+            (link node new)
+            (link new right)
+            (link right next)
+            (shift-rest-right next))))
     head))
 
 (defun segment-count (head)
@@ -278,12 +304,13 @@
           while node
           do (print node s))))
 
-(defun test-from-file (path)
+(defun test-from-file (path &key tests)
   (let ((list nil)
         (test nil)
         (total 0)
         (passed 0)
-        (failed 0))
+        (failed 0)
+        (skipped 0))
     (let ((lines
            (with-open-file (f path :external-format :utf8)
              (loop for line = (read-line f nil nil)
@@ -299,14 +326,17 @@
                      (setf list (read-segments (subseq line pos))))
                     ((and (symbolp first) (string-equal "test" first))
                      (setf test (read-from-string (subseq line pos))))
-                    ((numberp first)
+                    ((and (numberp first)
+                          (or (null tests)
+                              (member first tests)))
                      (with-input-from-string (s line :start pos)
                        (let ((form (read s))
                              (other (loop for thing = (read s nil nil)
                                        while thing
                                        collecting thing)))
                          (incf total)
-                         (let ((result (apply test first form other)))
+                         (let* ((list-list (list (copy-leaves list)))
+                                (result (apply test first form (append other list-list))))
                            (if (eq t result)
                                (progn
                                  (incf passed)
@@ -314,8 +344,10 @@
                                (progn
                                  (incf failed)
                                  (terpri)))))))
-                    (t "Warn: unknown test format '~S'" first))))))
-      (format t "~%Total ~D; Passed ~D; Failed ~D~%" total passed failed))))
+                    ((numberp first)
+                     (incf skipped))
+                    (t (warn "Unknown test format '~S'" first)))))))
+      (format t "~%Total ~D/~D; Passed ~D; Failed ~D~%" total (+ total skipped) passed failed))))
 
 (defun compose-b (val)
   (cond ((string= "." val)
@@ -326,6 +358,57 @@
          "C")
         ((string= "C" val)
          "A")))
+
+(defun compose-list (head start end composer &optional (value= #'eql))
+  (loop repeat 10 ; DEBUG
+        for node = (find-leaf head (1- end))
+        while (> end start)
+        do (let* (;(node (find-leaf head (1- end)))
+                  (old-value (value node))
+                  (new-value (funcall composer old-value)))
+             (if (funcall value= new-value old-value)
+                 (loop-finish))
+                 (let ((new-end
+                         (unless (and (next node)
+                                      (= end (key (next node))))
+                           (make-instance 'leaf)))
+                       (new-start
+                         (when (> start (key node))
+                           (make-instance 'leaf))))
+                   (cond
+                     ((and new-end new-start)
+                      (link new-start new-end)
+                      (link new-end (next node))
+                      (link node new-start)
+                      (setf (value new-start) new-value
+                            (value new-end) old-value
+                            (key new-start) start
+                            (key new-end) end)
+                      (loop-finish))
+                     (new-start
+                      (link new-start (next node))
+                      (link node new-start)
+                      (setf (value new-start) new-value
+                            (key new-start) start)
+                      (loop-finish))
+                     (new-end
+                      (link new-end (next node))
+                      (link node new-end)
+                      (setf (value new-end) old-value
+                            (value node) new-value
+                            (key new-end) end
+                            end (key node)))
+                     (t
+                      (setf (value node) new-value)
+                      (when (and (next (next node))
+                                 (funcall value= (value (next (next node))) new-value))
+                        (link node (next (next node))))
+                      (setf end (key node))))))
+        finally (when (and (next node)
+                           (next (next node))
+                           (funcall value= (value node) (value (next node))))
+                  (link node (next (next node)))))
+  head)
 
 (defun test-shift (number operation expected-string expected-count
                    &optional (list (make-leaf-list 0 25 5)))
@@ -350,6 +433,6 @@
             (setf result nil)))
         result)
     (error (e) (format t "~%Failed: ~D ~A~%~
-                            ERROR: ~S~%"
-                       number operation e)
+                            ERROR: [~S] ~A~%"
+                       number operation (type-of e) e)
       nil)))
